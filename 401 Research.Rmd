@@ -1,0 +1,129 @@
+---
+title: "401 Research"
+author: "Holston Slack"
+date: "2/29/2024"
+output: html_document
+---
+```{r}
+library (readr)
+library(dplyr)
+library(ggplot2)
+library(stringr)
+library(data.table)
+library(tidyverse)
+```
+
+```{r}
+credits <- read.csv("credits.csv")
+keywords <- read.csv("keywords.csv")
+ratings <- read.csv ("ratings.csv")
+links <- read.csv("links.csv")
+meta <- read.csv("movies_metadata.csv")
+
+```
+
+```{r}
+#merges 2 datasets and joins based off common column
+df_combined <- merge(ratings, links, by = "movieId")
+```
+
+
+```{r}
+meta <- meta %>%
+  filter(original_language == "en") %>% 
+  filter(as.numeric(str_sub(release_date, 1, 4)) >= 1970 & 
+         as.numeric(str_sub(release_date, 1, 4)) <= 2020)
+meta <- meta %>%
+  filter(str_detect(belongs_to_collection, "\\{"))
+
+# filtering movies to be between the years 1970 and 2020 for a round 50 year window
+
+meta <- meta %>% 
+  rename(tmdbId = id)
+
+```
+
+```{r}
+df_combined <- merge(df_combined, meta, by = "tmdbId")
+#combine datasets again, this time with a different column
+```
+
+
+
+```{r}
+df_combined <- df_combined %>%
+  filter(original_language == "en") %>% 
+  filter(as.numeric(str_sub(release_date, 1, 4)) >= 1970 & 
+         as.numeric(str_sub(release_date, 1, 4)) <= 2020)
+```
+
+
+```{r}
+df_combined <- df_combined[, !(colnames(df_combined) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
+
+#drop columns that we won't be using in analysis
+
+meta <- meta[, !(colnames(meta) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
+```
+
+
+Working to regex the title from belongs_to column; string; incomplete
+
+```{r}
+
+'''extract_title <- function(json_string) {
+  # Split the string by key-value separators
+  parts <- str_split(json_string, "[:,\"]+")[[1]]
+  
+  # Find the "name" key and extract value
+  if (any(parts == "name")) {
+    name_index <- which(parts == "name") + 1
+    if (name_index <= length(parts)) {
+      return(parts[name_index])
+    } else {
+      return(NULL)  # Missing value after "name"
+    }
+  } else {
+    return(NULL)  # No "name" key found
+  }
+}
+
+# Apply the function to each element
+titles <- sapply(meta$belongs_to_collection, extract_title)
+
+# Handle missing values and print titles
+if (any(is.null(titles))) {
+  print("Some titles were missing or could not be parsed.")
+} else {
+  print(titles)
+}'''
+
+```
+
+```{r}
+# examining distribution of dependent variable (revenue)
+fig1 <- hist(meta$revenue, 
+     main = "Histogram of Revenue in meta",  # Title 
+     xlab = "Revenue",                   # X-axis label
+     ylab = "Frequency",                # Y-axis label
+     col = "lightblue"                 # Bar color
+)
+
+
+
+data_type <- typeof(meta$budget)
+
+# If it's not numeric, convert it (assuming it's a character vector containing numbers)
+if (data_type != "numeric") {
+  meta$budget <- as.numeric(meta$budget)
+}
+fig2 <- hist(meta$budget, 
+     main = "Histogram of Budget in meta",  # Title 
+     xlab = "Budget",                   # X-axis label
+     ylab = "Frequency",                # Y-axis label
+     col = "lightblue"                 # Bar color
+)
+
+
+```
+
