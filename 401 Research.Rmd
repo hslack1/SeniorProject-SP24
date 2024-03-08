@@ -21,7 +21,7 @@ links <- read.csv("links.csv")
 meta <- read.csv("movies_metadata.csv")
 
 ```
-
+this is a test change for github
 ```{r}
 #merges 2 datasets and joins based off common column
 df_combined <- merge(ratings, links, by = "movieId")
