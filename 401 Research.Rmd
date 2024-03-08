@@ -21,7 +21,7 @@ links <- read.csv("links.csv")
 meta <- read.csv("movies_metadata.csv")
 
 ```
-this is a test change for github
+
 ```{r}
 #merges 2 datasets and joins based off common column
 df_combined <- merge(ratings, links, by = "movieId")
@@ -29,16 +29,21 @@ df_combined <- merge(ratings, links, by = "movieId")
 
 
 ```{r}
+meta <- read.csv("movies_metadata.csv")
 meta <- meta %>%
   filter(original_language == "en") %>% 
   filter(as.numeric(str_sub(release_date, 1, 4)) >= 1970 & 
-         as.numeric(str_sub(release_date, 1, 4)) <= 2020)
-meta <- meta %>%
+         as.numeric(str_sub(release_date, 1, 4)) <= 2020)%>%
+  filter(revenue >= 100) %>%
+  filter(budget >=100)
+
+nonsequels <- meta %>%
+  filter(is.na(meta$belongs_to_collection) | nchar(meta$belongs_to_collection) == 0) 
+
+sequels <- meta %>%
   filter(str_detect(belongs_to_collection, "\\{"))
 
-# filtering movies to be between the years 1970 and 2020 for a round 50 year window
-
-meta <- meta %>% 
+sequels <- sequels %>% 
   rename(tmdbId = id)
 
 ```
@@ -58,6 +63,7 @@ df_combined <- df_combined %>%
 ```
 
 
+
 ```{r}
 df_combined <- df_combined[, !(colnames(df_combined) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
 
@@ -70,60 +76,51 @@ meta <- meta[, !(colnames(meta) %in% c("timestamp", "adult", "homepage", "poster
 Working to regex the title from belongs_to column; string; incomplete
 
 ```{r}
-
-'''extract_title <- function(json_string) {
-  # Split the string by key-value separators
-  parts <- str_split(json_string, "[:,\"]+")[[1]]
+extract_between_commas <- function(text) {
+  # Split the text by commas using str_split
+  split_text <- str_split(text, ",")[[1]]  # Split text, take the first element (vector of substrings)
   
-  # Find the "name" key and extract value
-  if (any(parts == "name")) {
-    name_index <- which(parts == "name") + 1
-    if (name_index <= length(parts)) {
-      return(parts[name_index])
-    } else {
-      return(NULL)  # Missing value after "name"
-    }
+  # Check if there are at least 3 commas (ensure enough elements for 2nd and 3rd comma)
+  if (length(split_text) >= 3) {
+    # Return the text between 2nd and 3rd comma (excluding commas)
+    return(split_text[2])
   } else {
-    return(NULL)  # No "name" key found
+    # If there are less than 3 commas, return an empty string
+    return("")
   }
 }
 
-# Apply the function to each element
-titles <- sapply(meta$belongs_to_collection, extract_title)
+# Apply the function to the "text_column"
+sequels$franchise <- lapply(sequels$belongs_to_collection, extract_between_commas)
 
-# Handle missing values and print titles
-if (any(is.null(titles))) {
-  print("Some titles were missing or could not be parsed.")
-} else {
-  print(titles)
-}'''
 
 ```
 
 ```{r}
-# examining distribution of dependent variable (revenue)
-fig1 <- hist(meta$revenue, 
-     main = "Histogram of Revenue in meta",  # Title 
-     xlab = "Revenue",                   # X-axis label
-     ylab = "Frequency",                # Y-axis label
-     col = "lightblue"                 # Bar color
-)
-
-
-
-data_type <- typeof(meta$budget)
-
-# If it's not numeric, convert it (assuming it's a character vector containing numbers)
-if (data_type != "numeric") {
-  meta$budget <- as.numeric(meta$budget)
+# Function to extract text between 3rd and 4th apostrophes
+extract_between_apostrophes <- function(text) {
+  # Split the text by apostrophes using str_split
+  split_text <- str_split(text, "'")[[1]]  # Split text, take the first element (vector of substrings)
+  
+  # Check if there are at least 4 apostrophes (ensure enough elements for 3rd and 4th)
+  if (length(split_text) >= 5) {
+    # Extract the text between 3rd and 4th apostrophe (excluding apostrophes)
+    extracted_text <- split_text[4]
+    
+    # Remove "collection" (case-insensitive) if it exists at the end
+    extracted_text <- str_trim(extracted_text, side = "right")  # Remove trailing whitespace
+    extracted_text <- gsub(" collection$", "", extracted_text, ignore.case = TRUE)  # Remove " collection" at the end (case-insensitive)
+    
+    return(extracted_text)
+  } else {
+    # If there are less than 4 apostrophes, return an empty string
+    return("")
+  }
 }
-fig2 <- hist(meta$budget, 
-     main = "Histogram of Budget in meta",  # Title 
-     xlab = "Budget",                   # X-axis label
-     ylab = "Frequency",                # Y-axis label
-     col = "lightblue"                 # Bar color
-)
 
+# Apply the function to the "text_column"
+sequels$belongs_to_collection <- lapply(sequels$franchise, extract_between_apostrophes)
 
+sequels <- sequels[, !(colnames(sequels) %in% c("timestamp","lanchise","franchise", "collection"))]
 ```
 
