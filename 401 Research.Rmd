@@ -124,3 +124,132 @@ sequels$belongs_to_collection <- lapply(sequels$franchise, extract_between_apost
 sequels <- sequels[, !(colnames(sequels) %in% c("timestamp","lanchise","franchise", "collection"))]
 ```
 
+```{r}
+extract_studio_names <- function(json_data) {
+  # Check if "production_companies" is a list and not empty
+  if (is.list(json_data)) {
+    # Extract names from each company in the list using lapply
+    names <- lapply(json_data, function(x) x$name)
+    
+    # Concatenate the extracted names separated by commas
+    return(paste(names, collapse = ", "))
+  } else {
+    # If "production_companies" is not a list, return an empty string
+    return("")
+  }
+}
+
+# Apply the function to each row in the "production_companies" column
+sequels$studio_names <- lapply(sequels$production_companies, extract_studio_names)
+
+# Print the data frame with the new column
+print(sequels)
+```
+
+
+```{r}
+nonsequels <- nonsequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
+
+sequels <- sequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
+```
+
+```{r}
+data_type <- typeof(sequels$budget)
+
+if (data_type != "numeric") {
+  sequels$revenue <- as.numeric(sequels$revenue)
+}
+seqfig1 <- ggplot(sequels, aes(x = revenue)) +
+  geom_histogram(binwidth = 250000000, fill = "lightblue", color = "black") +  # Adjust binwidth
+  theme_minimal() +
+  labs(title = "Fig. 1 Distribution of Revenue Amongst Sequels", x = "Revenue (M)", y = "Frequency") +
+  scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
+                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
+seqfig1
+
+
+# If it's not numeric, convert it (assuming it's a character vector containing numbers)
+if (data_type != "numeric") {
+  sequels$budget <- as.numeric(sequels$budget)
+}
+seqfig2 <- ggplot(sequels, aes(x = budget)) +
+  geom_histogram(binwidth = 50000000, fill = "lightblue", color = "black") +  # Adjust binwidth as needed
+  theme_minimal() +
+  labs(title = "Fig 2. Distribution of Budget Amongst Sequels", x = "Budget (M)", y = "Frequency")+
+  scale_x_continuous(breaks = seq(0, 380e6, by = 50e6),  # Labels every 50 million
+                   labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as millions
+
+seqfig2
+```
+
+```{r}
+data_type <- typeof(nonsequels$budget)
+
+if (data_type != "numeric") {
+  nonsequels$revenue <- as.numeric(nonsequels$revenue)
+}
+fig1 <- ggplot(nonsequels, aes(x = revenue)) +
+  geom_histogram(binwidth = 250000000, fill = "lightblue", color = "black") +  # Adjust binwidth
+  theme_minimal() +
+  labs(title = "Distribution of Revenue Amongst Non-Sequels", x = "Revenue (M)", y = "Frequency") +
+  scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
+                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
+fig1
+
+
+# If it's not numeric, convert it (assuming it's a character vector containing numbers)
+if (data_type != "numeric") {
+  nonsequels$budget <- as.numeric(nonsequels$budget)
+}
+fig2 <- ggplot(nonsequels, aes(x = budget)) +
+  geom_histogram(binwidth = 50000000, fill = "lightblue", color = "black") +  # Adjust binwidth as needed
+  theme_minimal() +
+  labs(title = "Distribution of Budget Amongst Non-Sequels", x = "Budget (M)", y = "Frequency")+
+  scale_x_continuous(breaks = seq(0, 380e6, by = 50e6),  # Labels every 50 million
+                   labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as millions
+
+fig2
+```
+
+
+```{r}
+seqdist <- grid.arrange(seqfig1, fig1, nrow = 2)
+nondist <- grid.arrange(fig1, fig2, nrow = 2)
+```
+
+creating variables
+number- this variable identifies the number for each movie in a franchise
+```{r}
+#format the francise so it is not a list
+extracted_data <- sapply(sequels$belongs_to_collection, `[[`, 1)  # Assuming first element is relevant
+sequels$collection_info <- extracted_data 
+
+```
+
+Add a number for each movie in the franchise
+
+```{r}
+sequels <- sequels %>%
+  group_by(collection_info) %>%
+  filter(!all(number == 1))  # Filter groups where NOT all numbers are 1
+```
+
+```{r}
+sub_sequel <- sequels [, c("budget", "runtime", "vote_average", "revenue")]
+correlation_matrix <- cor(sub_sequel, use = "pairwise")
+print(correlation_matrix)
+```
+
+
+```{r}
+# Regression Analysis for Revenue
+lm_revenue_sequel <- lm(revenue ~ budget + runtime + vote_average + number, data = sequels)
+
+lm_revenue_nonsequel <- lm(revenue ~ runtime + vote_average + budget, data = nonsequels)
+
+
+summary(lm_revenue_sequel)
+
+summary(lm_revenue_nonsequel)
+```
+
