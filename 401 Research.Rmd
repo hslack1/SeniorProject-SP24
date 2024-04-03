@@ -9,8 +9,11 @@ library (readr)
 library(dplyr)
 library(ggplot2)
 library(stringr)
+library(gridExtra)
 library(data.table)
+library(patchwork)
 library(tidyverse)
+library(jsonlite)
 ```
 
 ```{r}
@@ -18,15 +21,13 @@ credits <- read.csv("credits.csv")
 keywords <- read.csv("keywords.csv")
 ratings <- read.csv ("ratings.csv")
 links <- read.csv("links.csv")
-meta <- read.csv("movies_metadata.csv")
-
+sequels <- read.csv("movies_metadata.csv")
 ```
 
 ```{r}
 #merges 2 datasets and joins based off common column
 df_combined <- merge(ratings, links, by = "movieId")
 ```
-
 
 ```{r}
 meta <- read.csv("movies_metadata.csv")
@@ -45,14 +46,12 @@ sequels <- meta %>%
 
 sequels <- sequels %>% 
   rename(tmdbId = id)
-
 ```
+
 
 ```{r}
-df_combined <- merge(df_combined, meta, by = "tmdbId")
-#combine datasets again, this time with a different column
+df_combined <- merge(df_combined, sequels, by = "tmdbId")
 ```
-
 
 
 ```{r}
@@ -61,17 +60,6 @@ df_combined <- df_combined %>%
   filter(as.numeric(str_sub(release_date, 1, 4)) >= 1970 & 
          as.numeric(str_sub(release_date, 1, 4)) <= 2020)
 ```
-
-
-
-```{r}
-df_combined <- df_combined[, !(colnames(df_combined) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
-
-#drop columns that we won't be using in analysis
-
-meta <- meta[, !(colnames(meta) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
-```
-
 
 Working to regex the title from belongs_to column; string; incomplete
 
@@ -93,7 +81,7 @@ extract_between_commas <- function(text) {
 # Apply the function to the "text_column"
 sequels$franchise <- lapply(sequels$belongs_to_collection, extract_between_commas)
 
-
+# Assuming your data is in a data frame named 'data' and the column with text is named 'text_column'
 ```
 
 ```{r}
@@ -122,36 +110,35 @@ extract_between_apostrophes <- function(text) {
 sequels$belongs_to_collection <- lapply(sequels$franchise, extract_between_apostrophes)
 
 sequels <- sequels[, !(colnames(sequels) %in% c("timestamp","lanchise","franchise", "collection"))]
+
 ```
+
 
 ```{r}
-extract_studio_names <- function(json_data) {
-  # Check if "production_companies" is a list and not empty
-  if (is.list(json_data)) {
-    # Extract names from each company in the list using lapply
-    names <- lapply(json_data, function(x) x$name)
-    
-    # Concatenate the extracted names separated by commas
-    return(paste(names, collapse = ", "))
-  } else {
-    # If "production_companies" is not a list, return an empty string
-    return("")
-  }
+data <- sequels$genres
+
+# Regular expression to capture characters after 20th position (inclusive) until next '
+pattern <- "(?<=.{20})([^']+)"
+
+captured_letters <- character()  # Initialize empty character vector
+
+for (i in 1:length(data)) {
+  # Extract text for each element (string) in the vector
+  current_letters <- str_extract_all(data[i], pattern) %>% unlist()
+  captured_letters <- c(captured_letters, current_letters)  # Append extracted letters
 }
 
-# Apply the function to each row in the "production_companies" column
-sequels$studio_names <- lapply(sequels$production_companies, extract_studio_names)
-
-# Print the data frame with the new column
-print(sequels)
+# Remove empty strings (optional)
+captured_letters <- captured_letters[!captured_letters == ""]
+view(captured_letters)
 ```
-
 
 ```{r}
 nonsequels <- nonsequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
 
 sequels <- sequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
 ```
+
 
 ```{r}
 data_type <- typeof(sequels$budget)
@@ -182,6 +169,7 @@ seqfig2 <- ggplot(sequels, aes(x = budget)) +
 seqfig2
 ```
 
+
 ```{r}
 data_type <- typeof(nonsequels$budget)
 
@@ -191,7 +179,7 @@ if (data_type != "numeric") {
 fig1 <- ggplot(nonsequels, aes(x = revenue)) +
   geom_histogram(binwidth = 250000000, fill = "lightblue", color = "black") +  # Adjust binwidth
   theme_minimal() +
-  labs(title = "Distribution of Revenue Amongst Non-Sequels", x = "Revenue (M)", y = "Frequency") +
+  labs(title = "Fig. 2 Distribution of Revenue Amongst Non-Sequels", x = "Revenue (M)", y = "Frequency") +
   scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
                      labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
 fig1
@@ -218,7 +206,9 @@ nondist <- grid.arrange(fig1, fig2, nrow = 2)
 ```
 
 creating variables
-number- this variable identifies the number for each movie in a franchise
+
+number- this variable identifies the number for each movie in the franchise
+
 ```{r}
 #format the francise so it is not a list
 extracted_data <- sapply(sequels$belongs_to_collection, `[[`, 1)  # Assuming first element is relevant
@@ -226,7 +216,16 @@ sequels$collection_info <- extracted_data
 
 ```
 
+
 Add a number for each movie in the franchise
+
+```{r}
+sequels <- sequels %>%
+  group_by(collection_info) %>%
+  mutate(number = rank(release_date))
+```
+
+Filter out movies that belonged to a franchise but there was only one movie in the franchise
 
 ```{r}
 sequels <- sequels %>%
@@ -240,16 +239,120 @@ correlation_matrix <- cor(sub_sequel, use = "pairwise")
 print(correlation_matrix)
 ```
 
+```{r}
+shapiro.test(sequels$budget)
+```
 
 ```{r}
-# Regression Analysis for Revenue
-lm_revenue_sequel <- lm(revenue ~ budget + runtime + vote_average + number, data = sequels)
+qqdata <- sequels$budget
 
-lm_revenue_nonsequel <- lm(revenue ~ runtime + vote_average + budget, data = nonsequels)
+theoretical_quantiles <- rnorm(length(qqdata), mean(qqdata), sd(qqdata))
+
+qqplot(qqdata, theoretical_quantiles,
+       main="Q-Q Plot of Budget Data", 
+       ylab="Theoretical Quantiles", xlab="Sample Quantiles")
+```
 
 
-summary(lm_revenue_sequel)
+```{r}
+if (any(sequels$budget <= 0)) {
+  # Add a small constant (adjust as needed)
+  data_adjusted <- sequels$budget + 1
+} else {
+  data_adjusted <- sequels$budget
+}
 
-summary(lm_revenue_nonsequel)
+# Apply log transformation (base-10 in this example)
+log_data <- log10(data_adjusted)
+
+# Test normality of log-transformed data
+shapiro.test(log_data)
+
+logqqdata <- log_data
+
+theoretical_quantiles <- rnorm(length(logqqdata), mean(logqqdata), sd(logqqdata))
+
+qq_log10budget <- qqplot(logqqdata, theoretical_quantiles,
+       main="Q-Q Plot of Budget Data", 
+       ylab="Theoretical Quantiles", xlab="Sample Quantiles")
+```
+
+```{r}
+qqdata <- sequels$runtime
+
+theoretical_quantiles <- rnorm(length(qqdata), mean(qqdata), sd(qqdata))
+
+qq_runtime <- qqplot(qqdata, theoretical_quantiles,
+       main="Q-Q Plot of Runtime Data", 
+       ylab="Theoretical Quantiles", xlab="Sample Quantiles")
+```
+
+```{r}
+qqdata <- sequels$vote_average
+
+theoretical_quantiles <- rnorm(length(qqdata), mean(qqdata), sd(qqdata))
+
+qq_vote_avg <- qqplot(qqdata, theoretical_quantiles,
+       main="Q-Q Plot of Vote Average", 
+       ylab="Theoretical Quantiles", xlab="Sample Quantiles")
+
+```
+
+```{r}
+if (!require("gridExtra")) install.packages("gridExtra")
+library(gridExtra)
+
+if (any(sequels$number <= 0)) {
+  # Add a small constant (adjust as needed)
+  data_adjusted <- sequels$budget + 1
+} else {
+  data_adjusted <- sequels$budget
+}
+
+# Apply log transformation (base-10 in this example)
+lognumber <- log10(data_adjusted)
+
+# Test normality of log-transformed data
+shapiro.test(lognumber)
+
+
+qq_numberdata <- lognumber
+
+theoretical_quantiles <- rnorm(length(qq_numberdata), mean(qq_numberdata), sd(qq_numberdata))
+
+qq_number <- qqplot(qq_numberdata, theoretical_quantiles,
+       main="Q-Q Plot of Movie Number", 
+       ylab="Theoretical Quantiles", xlab="Sample Quantiles")
+```
+
+```{r}
+sequels$log_data <- log_data
+sequels$log_number <- lognumber
+```
+
+```{r}
+lm_model <- lm(revenue ~ log_data + log_number + vote_average + runtime, data = sequels)
+summary(lm_model)
+```
+
+```{r}
+new_min <- 0  # Adjust this value as needed (minimum vote average)
+new_max <- 10  # Adjust this value as needed (maximum vote average)
+
+sequelvote <- ggplot(sequels, aes(x = vote_average)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of Vote Average (Sequels)", x = "Vote Average", y = "Density") +
+  theme_grey() +
+  scale_x_continuous(limits = c(new_min, new_max))  # Set new limits
+
+nonsequelvote <- ggplot(nonsequels, aes(x = vote_average)) +
+  geom_density(alpha = 0.5) +
+  labs(title = "Density Plot of Vote Average (Non-Sequels)", x = "Vote Average", y = "Density") +
+  theme_grey() +
+  scale_x_continuous(limits = c(new_min, new_max))  # Set the same limits again
+
+
+
+densityplots <- grid.arrange(sequelvote,nonsequelvote, nrow = 2)
 ```
 
