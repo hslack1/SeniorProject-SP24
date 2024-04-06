@@ -13,8 +13,9 @@ library(gridExtra)
 library(data.table)
 library(patchwork)
 library(tidyverse)
-library(stats)
 library(jsonlite)
+library(car)   # For VIF calculation
+library(lmtest)
 ```
 
 ```{r}
@@ -131,11 +132,10 @@ for (i in 1:length(data)) {
 
 # Remove empty strings (optional)
 captured_letters <- captured_letters[!captured_letters == ""]
-view(captured_letters)
 ```
 
 ```{r}
-nonsequels <- nonsequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
+nonsequels <- nonsequels[, !(colnames(nonsequels) %in% c( "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
 
 sequels <- sequels[, !(colnames(sequels) %in% c("timestamp", "adult", "homepage", "poster_path", "spoken_languages", "status", "tagline", "video", "imdb_id", "overview"))]
 ```
@@ -209,103 +209,154 @@ nondist <- grid.arrange(fig1, fig2, nrow = 2)
 creating variables
 
 number- this variable identifies the number for each movie in the franchise
+Add a number for each movie in the franchise
+
+Filter out movies that belonged to a franchise but there was only one movie in the franchise
 
 ```{r}
 #format the francise so it is not a list
 extracted_data <- sapply(sequels$belongs_to_collection, `[[`, 1)  # Assuming first element is relevant
 sequels$collection_info <- extracted_data 
 
-```
-
-
-Add a number for each movie in the franchise
-
-```{r}
 sequels <- sequels %>%
   group_by(collection_info) %>%
   mutate(number = rank(release_date))
-```
 
-Filter out movies that belonged to a franchise but there was only one movie in the franchise
-
-```{r}
 sequels <- sequels %>%
   group_by(collection_info) %>%
   filter(!all(number == 1))  # Filter groups where NOT all numbers are 1
-```
 
-```{r}
 sequelsonly <- sequels %>%
   filter(number>1)
 
 firstmovie <- sequels %>%
-  filter(number == 1)
+  filter(number == 1) %>%
+  filter(budget > 1000000)
+
 ```
 
+
+
+
+```{r}
+data_type <- typeof(nonsequels$budget)
+
+if (data_type != "numeric") {
+  sequelsonly$revenue <- as.numeric(sequelsonly$revenue)
+}
+ffig1 <- ggplot(sequelsonly, aes(x = revenue)) +
+  geom_histogram(binwidth = 250000000, fill = "lightblue", color = "black") +  # Adjust binwidth
+  theme_grey() +
+  labs(title = "Fig. 1 Distribution of Revenue Amongst Sequels", x = "Revenue (M)", y = "Frequency") +
+  scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
+                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
+ffig1
+
+
+# If it's not numeric, convert it (assuming it's a character vector containing numbers)
+if (data_type != "numeric") {
+  sequelsonly$vote_average <- as.numeric(sequelsonly$vote_average)
+}
+ffig2 <- ggplot(sequelsonly, aes(x = vote_average)) +
+  geom_histogram(binwidth = .5, fill = "lightblue", color = "black") +  # Adjust binwidth as needed
+  theme_grey() +
+  labs(title = "Fig. 2 Distribution of Vote Average Amongst Sequels", x = "Vote Average", y = "Frequency")
+
+
+ffig2
+
+
+```
+
+
+```{r}
+
+if (data_type != "numeric") {
+  sequelsonly$runtime <- as.numeric(sequelsonly$runtime)
+}
+ffig3 <- ggplot(sequelsonly, aes(x = runtime)) +
+  geom_histogram(binwidth = 25, fill = "lightblue", color = "black") +  # Adjust binwidth as needed
+  theme_grey() +
+  labs(title = "Fig. 3 Distribution of Runtime Amongst Sequels", x = "Runtime (Minutes)", y = "Frequency") 
+
+ffig3
+
+
+if (data_type != "numeric") {
+  sequelsonly$budget <- as.numeric(sequelsonly$budget)
+}
+ffig4 <- ggplot(sequelsonly, aes(x = budget)) +
+  geom_histogram(binwidth = 25000000, fill = "lightblue", color = "black") +  # Adjust binwidth as needed
+  theme_grey() +
+  labs(title = "Fig. 4 Distribution of Budget Amongst Sequels", x = "Budget (M)", y = "Frequency")+
+  scale_x_continuous(breaks = seq(0, 380e6, by = 50e6),  # Labels every 50 million
+                   labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as millions
+ffig4
+```
+
+```{r}
+independentdist <- grid.arrange(ffig1, ffig2, ffig3, ffig4, nrow = 2)
+```
 
 ```{r}
 sub_sequel <- sequels [, c("budget", "runtime", "vote_average", "revenue")]
 correlation_matrix <- cor(sub_sequel, use = "pairwise")
 
-sub_sequel <- sequelsonly [, c("budget", "runtime", "vote_average", "revenue")]
-correlation_matrixseqonly <- cor(sub_sequel, use = "pairwise")
-
-print(correlation_matrix)
-print(correlation_matrixseqonly)
-
+sub_sequelonly <- sequelsonly [, c("budget", "runtime", "vote_average", "revenue")]
+correlation_matrixseqonly <- cor(sub_sequelonly, use = "pairwise")
+correlation_matrixseqonly
 
 ```
 
-
 ```{r}
-
-if (any(sequels$budget <= 0)) {
+if (any(sequelsonly$budget <= 0)) {
   # Add a small constant (adjust as needed)
-  data_adjusted <- sequels$budget + 1
+  data_adjusted <- sequelsonly$budget + 1
 } else {
-  data_adjusted <- sequels$budget
+  data_adjusted <- sequelsonly$budget
 }
-
 
 # Apply log transformation (base-10 in this example)
 sqrtnumber <- sqrt(data_adjusted)
+sqrtnumber <- sqrt(sqrtnumber)
 sqrtnumber <- sqrt(sqrtnumber)
 # Test normality of log-transformed data
 shapiro.test(sqrtnumber)
 
 logqqdata <- sqrtnumber
-sequels$sqrt_budget <- logqqdata
+sequelsonly$sqrt_budget <- logqqdata
 theoretical_quantiles <- rnorm(length(logqqdata), mean(logqqdata), sd(logqqdata))
 
 qq_sqrtbudget <- qqplot(logqqdata, theoretical_quantiles,
-       main="Q-Q Plot of Budget Data",
+       main="Q-Q Plot of Budget Data", 
        ylab="Theoretical Quantiles", xlab="Sample Quantiles")
 ```
 
 
 ```{r}
 # Square root transformation
-rqqdata <- sequels$runtime
+rqqdata <- sequelsonly$runtime
 runtimetransformed <- sqrt(rqqdata)
-
+runtimetransformed <- sqrt(runtimetransformed)
+runtimetransformed <- sqrt(runtimetransformed)
 shapiro.test(runtimetransformed)
 
 
-sequels$runtime_sqrt <- runtimetransformed
+sequelsonly$runtime_sqrt <- runtimetransformed
 
 theoretical_quantiles <- rnorm(length(runtimetransformed), mean(runtimetransformed), sd(runtimetransformed))
 qq_runtime <- qqplot(runtimetransformed, theoretical_quantiles,
-       main="Q-Q Plot of Runtime Data",
+       main="Q-Q Plot of Runtime Data", 
        ylab="Theoretical Quantiles", xlab="Sample Quantiles")
 ```
 
 ```{r}
-qqdata <- sequels$vote_average
+qqdata <- sequelsonly$vote_average
 
 theoretical_quantiles <- rnorm(length(qqdata), mean(qqdata), sd(qqdata))
 shapiro.test(qqdata)
 qq_vote_avg <- qqplot(qqdata, theoretical_quantiles,
-       main="Q-Q Plot of Vote Average",
+       main="Q-Q Plot of Vote Average", 
        ylab="Theoretical Quantiles", xlab="Sample Quantiles")
 
 ```
@@ -314,17 +365,16 @@ qq_vote_avg <- qqplot(qqdata, theoretical_quantiles,
 if (!require("gridExtra")) install.packages("gridExtra")
 library(gridExtra)
 
-if (any(sequels$number <= 0)) {
+if (any(sequelsonly$number <= 0)) {
   # Add a small constant (adjust as needed)
-  data_adjusted <- sequels$number + 1
+  data_adjusted <- sequelsonly$number + 1
 } else {
-  data_adjusted <- sequels$number
+  data_adjusted <- sequelsonly$number
 }
 
 sqrtnumber <- sqrt(data_adjusted)
 
-shapiro.test(sequels$number)
-shapiro.test(expnum)
+
 shapiro.test(sqrtnumber)
 
 # Apply log transformation (base-10 in this example)
@@ -338,48 +388,31 @@ qq_numberdata <- sqrtnumber
 
 theoretical_quantiles <- rnorm(length(qq_numberdata), mean(qq_numberdata), sd(qq_numberdata))
 qq_number <- qqplot(qq_numberdata, theoretical_quantiles,
-       main="Q-Q Plot of Movie Number",
+       main="Q-Q Plot of Movie Number", 
        ylab="Theoretical Quantiles", xlab="Sample Quantiles")
 
-
+sequelsonly$sqrt_budget <- logqqdata
+sequelsonly$sqrt_number <- lognumber
 ```
 
 ```{r}
-sequels$log_budget <- logqqdata
-sequels$log_number <- lognumber
-```
-
-```{r}
-lm_model_seqonly <- lm(revenue ~ log_budget + log_number + vote_average + runtime_sqrt, data = sequelsonly)
-
-lm_model <- lm(revenue ~ budget + number + vote_average + runtime, data = sequelsonly)
-plot(lm_model_seqonly, which = 1)
-summary(lm_model)
-summary(lm_model_seqonly)
-```
-
-```{r}
-ggplot(sequelsonly, aes(x = sqrt_budget, y = revenue)) +
+linfig1 <- ggplot(sequelsonly, aes(x = sqrt_budget, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
   labs(title = "Revenue vs. Budget (Sequel Movies Only")+
   scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
-  scale_x_continuous(labels = c("25 M", "100 M", "225 M", "400 M"), breaks = c(sqrt(25000000), sqrt(100000000), sqrt(225000000), sqrt(400000000))) +
   xlab("Budget") +
   ylab("Revenue") +
   theme_grey()
-
-
 ```
 
-
 ```{r}
-ggplot(sequelsonly, aes(x = runtime_sqrt, y = revenue)) +
+linfig2 <- ggplot(sequelsonly, aes(x = runtime_sqrt, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
   labs(title = "Revenue vs. Runtime (Sequel Movies Only")+
   scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
-  scale_x_continuous(labels = c(100, 144, 196, 256, 324), breaks = c(sqrt(100), sqrt(144), sqrt(196), sqrt(256), sqrt(324))) +
+ 
   xlab("Runtime") +
   ylab("Revenue") +
   theme_grey()
@@ -387,123 +420,125 @@ ggplot(sequelsonly, aes(x = runtime_sqrt, y = revenue)) +
 
 
 ```{r}
-ggplot(sequelsonly, aes(x = vote_average, y = revenue)) +
+linfig3 <- ggplot(sequelsonly, aes(x = vote_average, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
   labs(title = "Revenue vs. Vote Average Out of 10 (Sequel Movies Only")+
   scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
+  
   xlab("Vote Average Out of 10") +
   ylab("Revenue") +
   theme_grey()
 ```
 
-```{r}
-ggplot(sequels, aes(x = logqqdata, y = revenue)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = lm, aes(y = predicted_revenue), color = "red") +
-  labs(title = "Revenue vs. Budget") +
-  scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
-  scale_x_continuous(labels = c("6.25 M", "31.6 M", "100 M", "384.1 M"), breaks = c(sqrt(2500), sqrt(5625), sqrt(10000), sqrt(15625))) +
-  xlab("Budget") +
-  ylab("Revenue") +
-  theme_grey()
-```
 
 ```{r}
-# Create the scatter plot
-ggplot(sequels, aes(x = qqdata, y = revenue)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = lm, aes(y = predicted_revenue), color = "red") +
-  labs(title = "Revenue vs. Vote Average (out of 10") +
-  scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
-  xlab("Vote Average (out of 10)") +
-  ylab("Revenue")+
-  theme_grey()
-  # Inverse transformation to get the actual budget values
-```
+new_min <- 50  # Adjust this value as needed (minimum runtime)
+new_max <- 210  # Adjust this value as needed (maximum runtime)
 
 
-```{r}
-ggplot(sequels, aes(x = runtimetransformed, y = revenue)) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(method = lm, aes(y = predicted_revenue), color = "red") +
-  labs(title = "Revenue vs. Runtime (Minutes)") +
-  scale_y_continuous(labels = scales::number_format(), breaks = seq(from = 0, to = 2000000000, by = 250000000)) +
-  scale_x_continuous(labels = c(100, 144, 196, 256, 324), breaks = c(sqrt(100), sqrt(144), sqrt(196), sqrt(256), sqrt(324))) +
-  xlab("Runtime (Minutes)")+
-  theme_grey()
-```
-
-```{r}
-
-new_min <- 0  # Adjust this value as needed (minimum vote average)
-new_max <- 10  # Adjust this value as needed (maximum vote average)
-
-# Combine data into a single data frame with a "category" variable
-combined_data <- rbind(
-  data.frame(vote_average = firstmovie$vote_average, category = "Movies that Recieved a Sequel"),
-  data.frame(vote_average = nonsequels$vote_average, category = "Non-Sequels")
-)
-
-# Create the density plot
-densityplot_vote <- ggplot(combined_data, aes(x = vote_average, color = category)) +
-  geom_density(alpha = 0.5) +
-  labs(title = "Density Plot of Vote Average", x = "Vote Average", y = "Density") +
-  theme_grey() +
-  scale_x_continuous(limits = c(new_min, new_max)) +  # Set new limits
-  scale_color_manual(values = c("royalblue", "orange"))  # Set colors for each category
-
-densityplot_vote
-```
-
-
-```{r}
-new_min <- 50  # Adjust this value as needed (minimum vote average)
-new_max <- 210  # Adjust this value as needed (maximum vote average)
-
-# Combine data into a single data frame with a "category" variable
 combined_data <- rbind(
   data.frame(runtime = firstmovie$runtime, category = "Movies that Recieved a Sequel"),
   data.frame(runtime = nonsequels$runtime, category = "Non-Sequels")
 )
 
+# Calculate means for each category
+mean_runtime <- aggregate(runtime ~ category, combined_data, mean)
+
 # Create the density plot
 densityplot <- ggplot(combined_data, aes(x = runtime, color = category)) +
   geom_density(alpha = 0.5) +
+  geom_vline(data = mean_runtime, aes(xintercept = runtime, color = category), linetype = "dashed") +  # Add mean lines
   labs(title = "Density Plot of Runtime", x = "Runtime", y = "Density") +
   theme_grey() +
   scale_x_continuous(limits = c(new_min, new_max)) +  # Set new limits
-  scale_color_manual(values = c("royalblue", "orange"))  # Set colors for each category
+  scale_color_manual(values = c("royalblue", "orange")) +  # Set colors for each category
+  annotate("text", x = mean_runtime$runtime[1], y = 0.01, label = paste("Mean:", round(mean_runtime$runtime[1], 2)), color = "royalblue", size = 3, hjust = 1, vjust = 12) +  # Label for mean of category 1
+  annotate("text", x = mean_runtime$runtime[2], y = 0.01, label = paste("Mean:", round(mean_runtime$runtime[2], 2)), color = "orange", size = 3, hjust = -0.1, vjust = 10)  # Label for mean of category 2
 
 densityplot
 ```
 
 ```{r}
 new_min <- 0  # Adjust this value as needed (minimum vote average)
-new_max <- 260000000  # Adjust this value as needed (maximum vote average)
+new_max <- 10  # Adjust this value as needed (maximum vote average)
+
+# Convert data type to numeric if needed
+if (data_type != "numeric") {
+  firstmovie$vote_average <- as.numeric(firstmovie$vote_average)
+  nonsequels$vote_average <- as.numeric(nonsequels$vote_average)
+}
 
 # Combine data into a single data frame with a "category" variable
 combined_data <- rbind(
-  data.frame(budget = firstmovie$budget, category = "Movies that Recieved a Sequel"),
-  data.frame(budget = nonsequels$budget, category = "Non-Sequels")
+  data.frame(vote_average = firstmovie$vote_average, category = "Movies that Received a Sequel"),
+  data.frame(vote_average = nonsequels$vote_average, category = "Non-Sequels")
 )
 
+# Calculate means for each category
+mean_vote_average <- aggregate(vote_average ~ category, combined_data, mean)
+
+# Check the structure of mean_vote_average
+str(mean_vote_average)
+
 # Create the density plot
-densityplot <- ggplot(combined_data, aes(x = budget, color = category)) +
+densityplot <- ggplot(combined_data, aes(x = vote_average, color = category)) +
   geom_density(alpha = 0.5) +
-  labs(title = "Density Plot of Budget", x = "Budget", y = "Density") +
+  geom_vline(data = mean_vote_average, aes(xintercept = vote_average, color = category), linetype = "dashed") +  # Add mean lines
+  labs(title = "Density Plot of Vote Average", x = "Vote Average", y = "Density") +
   theme_grey() +
   scale_x_continuous(limits = c(new_min, new_max)) +  # Set new limits
-  scale_x_continuous(labels = c(1000000, 144, 196, 256, 324), breaks = c(sqrt(100), sqrt(144), sqrt(196), sqrt(256), sqrt(324))) +
-  scale_color_manual(values = c("royalblue", "orange"))  # Set colors for each category
- 
+  scale_color_manual(values = c("royalblue", "orange")) +  # Set colors for each category
+  annotate("text", x = mean_vote_average$vote_average[1], y = 0.01, label = paste("Mean:", round(mean_vote_average$vote_average[1], 2)), color = "royalblue", size = 3, hjust = -.31, vjust = -30) +  # Label for mean of category 1
+  annotate("text", x = mean_vote_average$vote_average[2], y = 0.01, label = paste("Mean:", round(mean_vote_average$vote_average[2], 2)), color = "orange", size = 3, hjust = 1, vjust = -30)  # Label for mean of category 2
 
 densityplot
 ```
 
 
 ```{r}
-# Load required librar
+new_min <- 0  # Adjust this value as needed (minimum budget)
+new_max <- 200000000  # Adjust this value as needed (maximum budget)
+
+# Convert data type to numeric if needed
+if (data_type != "numeric") {
+  firstmovie$budget <- as.numeric(firstmovie$budget)
+  nonsequels$budget <- as.numeric(nonsequels$budget)
+}
+
+# Combine data into a single data frame with a "category" variable
+combined_dataa <- rbind(
+  data.frame(budget = firstmovie$budget, category = "Movies that Received a Sequel"),
+  data.frame(budget = nonsequels$budget, category = "Non-Sequels")
+)
+
+# Calculate means for each category
+mean_budget <- aggregate(budget ~ category, combined_dataa, mean)
+
+# Check the structure of mean_budget
+str(mean_budget)
+
+# Create the density plot
+densityplot <- ggplot(combined_dataa, aes(x = budget, color = category)) +
+  geom_density(alpha = 0.5) +
+  geom_vline(data = mean_budget, aes(xintercept = budget, color = category), linetype = "dashed") +  # Add mean lines
+  labs(title = "Density Plot of Budget", x = "Budget", y = "Density") +
+  theme_grey() +
+  scale_x_continuous(limits = c(new_min, new_max), labels = scales::comma) +  # Set new limits and format labels as comma-separated
+  scale_color_manual(values = c("royalblue", "orange")) +  # Set colors for each category
+  annotate("text", x = mean_budget$budget[1], y = 0.0000008, label = paste("Mean:", scales::comma(round(mean_budget$budget[1], 2))), color = "royalblue", size = 3, hjust = -0.1, vjust = -1) +  # Label for mean of category 1
+  annotate("text", x = mean_budget$budget[2], y = 0.0000008, label = paste("Mean:", scales::comma(round(mean_budget$budget[2], 2))), color = "orange", size = 3, hjust = -0.1, vjust = -1)  # Label for mean of category 2
+
+densityplot
+```
+
+
+Working to seperate genre
+
+```{r}
+# Load required library
+library(jsonlite)
+
 # Your dataframe with 561 rows in one column, assuming it's named df
 # Replace 'df' with the actual name of your dataframe
 # Let's assume the column containing JSON data is named "genres"
@@ -526,10 +561,10 @@ all_names <- list()
 for (json_string in corrected_json_column) {
   # Parse the JSON string in the current row
   parsed_json <- jsonlite::fromJSON(json_string)
- 
+  
   # Extract the value of the 'name' key
   names <- parsed_json$name
- 
+  
   # Store the extracted names in the list
   all_names <- c(all_names, list(names))
 }
@@ -551,6 +586,7 @@ sequelsonly <- cbind(sequelsonly, all_names_df)
 
 # Print the joined dataframe
 print(sequelsonly)
+
 ```
 
 ```{r}
@@ -559,15 +595,37 @@ movies_long <- sequelsonly %>%
                names_to = "Genre_Column",
                values_to = "Genre") %>%
   filter(!is.na(Genre))  # Remove rows with missing genre values
-
-# Perform ANOVA
-anova_result <- aov(revenue ~ Genre, data = movies_long)
-
-# Print ANOVA table
-print(summary(anova_result))
 ```
 
 Calculating HSD to quantify the magnitude of differences in revenue between genres. Will help understand the significance of observed differences from anova
+
+```{r}
+# Load the necessary library
+library(stats)
+
+# Assuming your data frame is named "movie_data" and the column containing revenues is named "revenue"
+# Assuming you have a column named "genre" indicating the genre of each movie
+
+# Perform ANOVA
+model <- lm(revenue ~ Genre, data = movies_long)
+anova_result <- anova(model)
+
+# Check the ANOVA result
+print(anova_result)
+
+# If the ANOVA is significant, proceed with Tukey's HSD test
+if (anova_result$`Pr(>F)`[1] < 0.05) {
+  tukey_result <- TukeyHSD(aov(model))
+  print(tukey_result)
+  
+  significant_pairs <- as.data.frame(tukey_result$`Genre`)  # Extract pairs and adjusted p-values
+  significant_pairs <- significant_pairs[significant_pairs$`p adj` < 0.05, ]  # Filter significant pairs
+  print(significant_pairs)
+  
+  
+}
+
+```
 
 
 ```{r}
@@ -588,40 +646,17 @@ print(anova_result)
 if (anova_result$`Pr(>F)`[1] < 0.05) {
   tukey_result <- TukeyHSD(aov(model))
   print(tukey_result)
- 
-  significant_pairs <- as.data.frame(tukey_result$`Genre`)  # Extract pairs and adjusted p-values
-  significant_pairs <- significant_pairs[significant_pairs$`p adj` < 0.05, ]  # Filter significant pairs
-  print(significant_pairs)}
-```
-
-
-```{r}
-# Load the necessary library
-
-# Assuming your data frame is named "movie_data" and the column containing revenues is named "revenue"
-# Assuming you have a column named "genre" indicating the genre of each movie
-
-# Perform ANOVA
-model <- lm(revenue ~ Genre, data = movies_long)
-anova_result <- anova(model)
-
-# Check the ANOVA result
-print(anova_result)
-
-# If the ANOVA is significant, proceed with Tukey's HSD test
-if (anova_result$`Pr(>F)`[1] < 0.05) {
-  tukey_result <- TukeyHSD(aov(model))
-  print(tukey_result)
- 
+  
   # Extract significant pairs and adjusted p-values
   significant_pairs <- as.data.frame(tukey_result$`Genre`)
   significant_pairs <- significant_pairs[significant_pairs$`p adj` < 0.05, ]
+  ## ADD TO APENDIX
   print(significant_pairs)
- 
+  
   # Visualize significant pairs
   barplot(significant_pairs$diff, names.arg = rownames(significant_pairs), ylim = c(min(significant_pairs$lwr), max(significant_pairs$upr)),
           xlab = "Genre Comparison", ylab = "Mean Difference", main = "Significant Genre Differences")
- 
+  
   # Add error bars
   arrows(x0 = 1:nrow(significant_pairs), y0 = significant_pairs$diff, y1 = significant_pairs$lwr, angle = 90, code = 3, length = 0.1)
 } else {
@@ -629,8 +664,11 @@ if (anova_result$`Pr(>F)`[1] < 0.05) {
 }
 ```
 
-
 ```{r}
+
+library(dplyr)
+library(ggplot2)
+
 # Assuming your data frame is named 'movies_data'
 # First, aggregate the data by Genre, calculating the mean revenue for each genre
 avg_revenue <- movies_long %>%
@@ -639,28 +677,92 @@ avg_revenue <- movies_long %>%
 
 # Now, plot the aggregated data
 ggplot(avg_revenue, aes(x = reorder(Genre, avg_revenue), y = avg_revenue)) +
-  geom_bar(stat = "identity", fill = "royalblue") +
-  labs(title = "Average Revenue by Genre (Sequels Only)", x = "Genre", y = "Average Revenue") +
+  geom_bar(stat = "identity", fill = "lightblue") +
+  geom_text(aes(label = scales::dollar(avg_revenue)), hjust = 1, color = "black", size = 3) +  # Add labels for average revenue
+  labs(title = "Fig 11. Average Revenue by Genre (Sequels Only)", x = "Genre", y = "Average Revenue") +
   theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
   coord_flip() +
   scale_y_continuous(labels = scales::dollar_format(prefix = "$"), breaks = seq(0, 500000000, by = 100000000))
 ```
 
+
 ```{r}
 # Assuming your data is stored in a dataframe called "data" with columns "outcome_variable", "categorical_predictor", and possibly other covariates
 
+
+
+
 # Fit linear regression model
-lm_model <- lm(revenue ~ log_budget + vote_average + runtime_sqrt, data = sequelsonly)
+lm_model<- lm(revenue ~ sqrt_budget + vote_average + runtime_sqrt, data = sequelsonly)
 
-# Perform ANOVA to check overall significance of categorical predictor
-anova_lm <- anova(lm_model)
 
-# Check ANOVA table
-print(anova_lm)
+residuals <- residuals(lm_model)
 
-# Extract p-value for the categorical predictor
-p_value <- anova_lm$`Pr(>F)`[1]
+summary(lm_model)
+#assumption
+# Check for homoscedasticity
+# little bit of a funnel shape but no clear patterns are present
+plott1<- plot(lm_model, which = 1, main = "Fig 5. Plot of Residuals vs Fitted Values")
 
+
+#shows the residuals are normally distributed
+histogram_resid <- ggplot(data.frame(residuals), aes(x = residuals)) +
+  geom_histogram(bins = 20, fill = "skyblue", color = "black", alpha = 0.7) +
+  labs(x = "Residuals", y = "Frequency", title = "Fig. 6 Histogram of Residuals")
+
+#add each independent variable vs dependent variable to assumptions
+# checking for linearity between independent and dependent variable
+linfig1
+linfig2
+linfig3
+
+plotss <- grid.arrange(linfig1, linfig2, linfig3)
+
+
+
+library(ggplot2)
+library(patchwork)
+library(ggcorrplot)
+
+# Assuming correlation_matrixseqonly is a correlation matrix object
+# Convert correlation_matrixseqonly to a ggplot object
+correlation_ggplot <- ggcorrplot(correlation_matrixseqonly, type = "upper", lab = TRUE)
+
+# Combine all plots using patchwork
+combined_plots <- (plott1 /histogram_resid)
+
+# Display the combined plot
+print(combined_plots)
+
+shapiro.test(sqrtnumber)
+shapiro.test(runtimetransformed)
+shapiro.test(qqdata)
+```
+
+```{r}
+## post-hoc
+
+# Assuming lm_model is your linear regression model object
+# Assuming "group" is the categorical predictor variable with multiple levels in lm_model
+
+# Load the emmeans package (if not already installed)
+confint(lm_model)
+
+# Assuming lm_model is your multiple linear regression model object
+
+# Diagnostic plots
+par(mfrow = c(2, 2))  # Set up a 2x2 layout for plots
+plot(lm_model, which = c( 2, 3, 4, 5), main = "Post-Hoc Tests for Linear Regression Model")  # Plot diagnostics, including residuals vs. fitted values, residuals vs. predictor variables, etc.
+qqnorm(residuals(lm_model))  # Q-Q plot for residuals
+qqline(residuals(lm_model))  # Add a line to the Q-Q plot
+
+# Formal statistical tests
+# Test for homoscedasticity
+library(lmtest)  # Load the lmtest package
+bptest(lm_model)  # Breusch-Pagan test for heteroscedasticity
+
+# Test for normality of residuals
+shapiro.test(residuals(lm_model))  # Shapiro-Wilk test for normality
 ```
 
 
