@@ -80,10 +80,8 @@ extract_between_commas <- function(text) {
   }
 }
 
-# Apply the function to the "text_column"
 sequels$franchise <- lapply(sequels$belongs_to_collection, extract_between_commas)
 
-# Assuming your data is in a data frame named 'data' and the column with text is named 'text_column'
 ```
 
 ```{r}
@@ -97,9 +95,9 @@ extract_between_apostrophes <- function(text) {
     # Extract the text between 3rd and 4th apostrophe (excluding apostrophes)
     extracted_text <- split_text[4]
     
-    # Remove "collection" (case-insensitive) if it exists at the end
+    # Remove "collection" if it exists at the end
     extracted_text <- str_trim(extracted_text, side = "right")  # Remove trailing whitespace
-    extracted_text <- gsub(" collection$", "", extracted_text, ignore.case = TRUE)  # Remove " collection" at the end (case-insensitive)
+    extracted_text <- gsub(" collection$", "", extracted_text, ignore.case = TRUE)  # Remove " collection" at the end 
     
     return(extracted_text)
   } else {
@@ -119,7 +117,7 @@ sequels <- sequels[, !(colnames(sequels) %in% c("timestamp","lanchise","franchis
 ```{r}
 data <- sequels$genres
 
-# Regular expression to capture characters after 20th position (inclusive) until next '
+# Regular expression to capture characters after 20th position until next '
 pattern <- "(?<=.{20})([^']+)"
 
 captured_letters <- character()  # Initialize empty character vector
@@ -152,7 +150,7 @@ seqfig1 <- ggplot(sequels, aes(x = revenue)) +
   theme_minimal() +
   labs(title = "Fig. 1 Distribution of Revenue Amongst Sequels", x = "Revenue (M)", y = "Frequency") +
   scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
-                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
+                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  
 seqfig1
 
 
@@ -182,7 +180,7 @@ fig1 <- ggplot(nonsequels, aes(x = revenue)) +
   theme_minimal() +
   labs(title = "Fig. 2 Distribution of Revenue Amongst Non-Sequels", x = "Revenue (M)", y = "Frequency") +
   scale_x_continuous(breaks = seq(0, 3e9, by = 2.5e+8),  # Labels every 500 million
-                     labels = scales::number_format(scale = 1e-6, suffix = "M"))  # Format as
+                     labels = scales::number_format(scale = 1e-6, suffix = "M"))
 fig1
 
 
@@ -214,8 +212,8 @@ Add a number for each movie in the franchise
 Filter out movies that belonged to a franchise but there was only one movie in the franchise
 
 ```{r}
-#format the francise so it is not a list
-extracted_data <- sapply(sequels$belongs_to_collection, `[[`, 1)  # Assuming first element is relevant
+#format the franchise so it is not a list
+extracted_data <- sapply(sequels$belongs_to_collection, `[[`, 1)
 sequels$collection_info <- extracted_data 
 
 sequels <- sequels %>%
@@ -299,6 +297,8 @@ independentdist <- grid.arrange(ffig1, ffig2, ffig3, ffig4, nrow = 2)
 ```
 
 ```{r}
+# creates subsets to run correlation matrixes on to verify assumption of no co-linearity
+
 sub_sequel <- sequels [, c("budget", "runtime", "vote_average", "revenue")]
 correlation_matrix <- cor(sub_sequel, use = "pairwise")
 
@@ -351,6 +351,7 @@ qq_runtime <- qqplot(runtimetransformed, theoretical_quantiles,
 ```
 
 ```{r}
+# no need to be transformed
 qqdata <- sequelsonly$vote_average
 
 theoretical_quantiles <- rnorm(length(qqdata), mean(qqdata), sd(qqdata))
@@ -396,6 +397,7 @@ sequelsonly$sqrt_number <- lognumber
 ```
 
 ```{r}
+# visualizes budget vs revenue
 linfig1 <- ggplot(sequelsonly, aes(x = sqrt_budget, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
@@ -407,6 +409,7 @@ linfig1 <- ggplot(sequelsonly, aes(x = sqrt_budget, y = revenue)) +
 ```
 
 ```{r}
+# visualizes runtime vs revenue
 linfig2 <- ggplot(sequelsonly, aes(x = runtime_sqrt, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
@@ -420,6 +423,7 @@ linfig2 <- ggplot(sequelsonly, aes(x = runtime_sqrt, y = revenue)) +
 
 
 ```{r}
+# visualizes ovote average vs revenue
 linfig3 <- ggplot(sequelsonly, aes(x = vote_average, y = revenue)) +
   geom_point(alpha = 0.5) +
   geom_smooth(method = lm, aes(y = revenue), color = "red") +
@@ -433,6 +437,8 @@ linfig3 <- ggplot(sequelsonly, aes(x = vote_average, y = revenue)) +
 
 
 ```{r}
+#compares independent variables between movies that recieved a sequel and nonsequel movies
+
 new_min <- 50  # Adjust this value as needed (minimum runtime)
 new_max <- 210  # Adjust this value as needed (maximum runtime)
 
@@ -460,6 +466,8 @@ densityplot
 ```
 
 ```{r}
+# compares vote average between sequel and nonsequel movies
+
 new_min <- 0  # Adjust this value as needed (minimum vote average)
 new_max <- 10  # Adjust this value as needed (maximum vote average)
 
@@ -536,13 +544,9 @@ densityplot
 Working to seperate genre
 
 ```{r}
-# Load required library
-library(jsonlite)
+# unpacks JSON format of genre
 
-# Your dataframe with 561 rows in one column, assuming it's named df
-# Replace 'df' with the actual name of your dataframe
-# Let's assume the column containing JSON data is named "genres"
-json_column <- sequelsonly$genres  # Replace with the name of your column containing JSON data
+json_column <- sequelsonly$genres 
 
 # Function to correct JSON format
 correct_json <- function(json_string) {
@@ -590,6 +594,7 @@ print(sequelsonly)
 ```
 
 ```{r}
+#pivots sequel dataset so each row is a single observation
 movies_long <- sequelsonly %>%
   pivot_longer(cols = starts_with("Genress"),
                names_to = "Genre_Column",
@@ -600,11 +605,7 @@ movies_long <- sequelsonly %>%
 Calculating HSD to quantify the magnitude of differences in revenue between genres. Will help understand the significance of observed differences from anova
 
 ```{r}
-# Load the necessary library
-library(stats)
 
-# Assuming your data frame is named "movie_data" and the column containing revenues is named "revenue"
-# Assuming you have a column named "genre" indicating the genre of each movie
 
 # Perform ANOVA
 model <- lm(revenue ~ Genre, data = movies_long)
@@ -629,11 +630,7 @@ if (anova_result$`Pr(>F)`[1] < 0.05) {
 
 
 ```{r}
-# Load the necessary library
-library(stats)
 
-# Assuming your data frame is named "movie_data" and the column containing revenues is named "revenue"
-# Assuming you have a column named "genre" indicating the genre of each movie
 
 # Perform ANOVA
 model <- lm(revenue ~ Genre, data = movies_long)
@@ -666,11 +663,7 @@ if (anova_result$`Pr(>F)`[1] < 0.05) {
 
 ```{r}
 
-library(dplyr)
-library(ggplot2)
-
-# Assuming your data frame is named 'movies_data'
-# First, aggregate the data by Genre, calculating the mean revenue for each genre
+# calculating the mean revenue for each genre
 avg_revenue <- movies_long %>%
   group_by(Genre) %>%
   summarise(avg_revenue = mean(revenue))
@@ -687,9 +680,6 @@ ggplot(avg_revenue, aes(x = reorder(Genre, avg_revenue), y = avg_revenue)) +
 
 
 ```{r}
-# Assuming your data is stored in a dataframe called "data" with columns "outcome_variable", "categorical_predictor", and possibly other covariates
-
-
 
 
 # Fit linear regression model
@@ -742,13 +732,8 @@ shapiro.test(qqdata)
 ```{r}
 ## post-hoc
 
-# Assuming lm_model is your linear regression model object
-# Assuming "group" is the categorical predictor variable with multiple levels in lm_model
-
-# Load the emmeans package (if not already installed)
 confint(lm_model)
 
-# Assuming lm_model is your multiple linear regression model object
 
 # Diagnostic plots
 par(mfrow = c(2, 2))  # Set up a 2x2 layout for plots
