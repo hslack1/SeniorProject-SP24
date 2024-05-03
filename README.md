@@ -13,5 +13,11 @@ This study investigates existing research on what factors influence a sequel’s
 ### Data
 The data used in this research is from a public dataset on Kaggle constructed by a user who scraped the data from imdb.com and tmdb.com
 
-The dataset can be found here "https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset"
+The dataset can be found on Kaggle here:
+
+https://www.kaggle.com/datasets/rounakbanik/the-movies-dataset
+
+Additionally, the datasets can be found here in my google drive:
+
+https://drive.google.com/drive/folders/1e6i1IvYzW55F-wGtYr1sEOqRQGvKBrM8?usp=share_link
 
